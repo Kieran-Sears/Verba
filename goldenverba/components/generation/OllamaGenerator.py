@@ -1,6 +1,7 @@
 import os
 import json
 import aiohttp
+from urllib.parse import urljoin
 from typing import List, Dict, AsyncGenerator
 
 from goldenverba.components.interfaces import Generator
@@ -35,7 +36,8 @@ class OllamaGenerator(Generator):
         conversation: List[Dict] = [],
     ) -> AsyncGenerator[Dict, None]:
         model = config.get("Model").value
-        url = f"{self.url}/api/chat"
+        
+        url = urljoin(self.url, "/api/chat")
         system_message = config.get("System Message").value
 
         if not self.url:

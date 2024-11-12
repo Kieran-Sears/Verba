@@ -36,8 +36,6 @@ class OllamaGenerator(Generator):
         conversation: List[Dict] = [],
     ) -> AsyncGenerator[Dict, None]:
         model = config.get("Model").value
-        
-        url = urljoin(self.url, "/api/chat")
         system_message = config.get("System Message").value
 
         if not self.url:
@@ -49,7 +47,7 @@ class OllamaGenerator(Generator):
 
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.post(url, json=data) as response:
+                async with session.post(urljoin(self.url, "/api/chat"), json=data) as response:
                     async for line in response.content:
                         if line.strip():
                             yield self._process_response(line)

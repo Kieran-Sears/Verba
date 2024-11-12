@@ -3,7 +3,7 @@ import importlib
 import math
 import json
 from datetime import datetime
-
+from aiokafka import AIOKafkaProducer
 from dotenv import load_dotenv
 from wasabi import msg
 import asyncio
@@ -806,3 +806,32 @@ class ClientManager:
             msg.warn(f"Removed client: {cred_hash}")
 
         msg.info(f"Cleaned up {len(clients_to_remove)} clients")
+
+
+class KafkaManager:
+    def __init__(self):
+        self.broker_url = os.getenv("KAFKA_BOOTSTRAP_SERVER") or (_ for _ in ()).throw(ValueError(f"KAFKA_BOOTSTRAP_SERVER is not set"))
+        self.topic = os.getenv("KAFKA_TOPIC") or (_ for _ in ()).throw(ValueError(f"KAFKA_TOPIC is not set"))
+        self.producer = None
+
+    async def start(self):
+        if not self.producer:
+            self.producer = AIOKafkaProducer(bootstrap_servers=self.broker_url)
+            await self.producer.start()
+            msg.info("Kafka producer started")
+
+    async def stop(self):
+        if self.producer:
+            await self.producer.stop()
+            msg.info("Kafka producer stopped")
+
+    async def send_message(self, message: dict):
+        if not self.producer:
+            raise Exception("Kafka producer is not initialized. Call start() before sending messages.")
+
+        try:
+            message_json = json.dumps(message).encode("utf-8")
+            await self.producer.send(self.topic, message_json)
+            msg.good(f"Message sent to {self.topic}: {message}")
+        except Exception as e:
+            msg.warn(f"Failed to send message to Kafka: {str(e)}")

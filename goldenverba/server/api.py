@@ -1,4 +1,4 @@
-from fastapi import FastAPI, WebSocket, Request
+from fastapi import FastAPI, WebSocket, Request, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from contextlib import asynccontextmanager
@@ -10,7 +10,7 @@ from weaviate.client import WeaviateAsyncClient
 
 import os
 from pathlib import Path
-
+from datetime import datetime
 from dotenv import load_dotenv
 from starlette.websockets import WebSocketDisconnect
 from wasabi import msg  # type: ignore[import]
@@ -56,13 +56,18 @@ manager = verba_manager.VerbaManager()
 
 client_manager = verba_manager.ClientManager()
 
+kafka_manager = verba_manager.KafkaManager()
+
+
 ### Lifespan
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    await kafka_manager.start()
     yield
     await client_manager.disconnect()
+    await kafka_manager.stop()
 
 
 # FastAPI App
@@ -421,7 +426,7 @@ async def update_theme_config(payload: SetThemeConfigPayload):
 
 # Receive query and return chunks and query answer
 @app.post("/api/query")
-async def query(payload: QueryPayload):
+async def query(payload: QueryPayload, background_tasks: BackgroundTasks):
     msg.good(f"Received query: {payload.query}")
     try:
         client = await client_manager.connect(payload.credentials)
@@ -430,9 +435,19 @@ async def query(payload: QueryPayload):
             client, payload.query, payload.RAG, payload.labels, documents_uuid
         )
 
+        kafka_payload = {
+            "query": payload.query,
+            "documents": documents,
+            "context": context,
+            "timestamp": datetime.now().isoformat()
+        }
+
+        background_tasks.add_task(kafka_manager.send_message, kafka_payload)
+
         return JSONResponse(
             content={"error": "", "documents": documents, "context": context}
         )
+
     except Exception as e:
         msg.warn(f"Query failed: {str(e)}")
         return JSONResponse(
